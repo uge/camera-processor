@@ -15,6 +15,8 @@ struct ImageFilters {
     float temperature = 0.0f; // [-1.0, 1.0], warm vs cool
     float sharpness = 0.0f;   // [0.0, 3.0], 0 = off
     bool mirror = false;      // Horizontal flip
+    bool tnrEnabled = false;  // Temporal Noise Reduction (3-frame sliding window)
+    float tnrStrength = 0.5f; // [0.0, 1.0], blending strength for temporal denoising
 };
 
 class GLProcessor : public QOpenGLWidget, protected QOpenGLFunctions {
@@ -50,6 +52,8 @@ private:
     std::unique_ptr<QOpenGLShaderProgram> m_program;
 
     GLuint m_inputTex = 0;
+    GLuint m_historyTex[2] = {0, 0}; // Sliding window history: t-1 and t-2
+    int m_historyCount = 0;
     GLuint m_lutTex = 0;
     GLuint m_fbo = 0;
     GLuint m_fboTex = 0;
@@ -75,6 +79,11 @@ private:
     int m_uLutTexture = -1;
     int m_uUseLut = -1;
     int m_uCropRect = -1;
+    int m_uPrevTex1 = -1;
+    int m_uPrevTex2 = -1;
+    int m_uTnrEnabled = -1;
+    int m_uTnrStrength = -1;
+    int m_uHistoryCount = -1;
 
     QRectF m_cropRect{0.0, 0.0, 1.0, 1.0};
     bool m_showProcessed = true;

@@ -19,6 +19,10 @@ It captures video from a physical camera (e.g. `/dev/video0`), applies GPU-accel
 - **Tone & Contrast Curve Editor**:
   - Interactive cubic spline curve editor with 256-entry 1D LUT mapping on the GPU.
   - One-click presets: *Linear*, *S-Curve*, *Lift Shadows*.
+- **Temporal Noise Reduction (TNR)**:
+  - Multi-frame 3-frame sliding window temporal filter executed on the GPU.
+  - Motion-adaptive blending: suppresses temporal smoothing over moving objects to eliminate motion ghosting while aggressively averaging out sensor noise and grain across static regions.
+  - Adjustable TNR strength slider and toggle.
 - **Color Temperature / White Balance**: Real-time warm/cool color balance compensation.
 - **Brightness & Contrast**: Mid-tone centered contrast adjustments.
 - **Gamma Correction**: Non-linear power-law gamma curve.

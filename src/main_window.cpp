@@ -207,6 +207,15 @@ void MainWindow::setupUI() {
     m_sliderSharpness = rowSharp->findChild<QSlider*>();
     shaderLayout->addWidget(rowSharp);
 
+    // Temporal Noise Reduction (3-frame sliding window)
+    m_checkTnr = new QCheckBox("Temporal Noise Reduction (3-Frame Window)", grpShader);
+    connect(m_checkTnr, &QCheckBox::toggled, this, &MainWindow::onShaderParamChanged);
+    shaderLayout->addWidget(m_checkTnr);
+
+    QWidget* rowTnr = createSliderRow("TNR Strength", 10, 100, 50, [this](int) { onShaderParamChanged(); });
+    m_sliderTnrStrength = rowTnr->findChild<QSlider*>();
+    shaderLayout->addWidget(rowTnr);
+
     // Mirror flip
     m_checkMirror = new QCheckBox("Mirror / Flip Horizontal", grpShader);
     connect(m_checkMirror, &QCheckBox::toggled, this, &MainWindow::onShaderParamChanged);
@@ -379,6 +388,12 @@ void MainWindow::onShaderParamChanged() {
     f.temperature = m_sliderTemperature->value() / 100.0f;
     f.sharpness = m_sliderSharpness->value() / 100.0f;
     f.mirror = m_checkMirror->isChecked();
+    if (m_checkTnr) {
+        f.tnrEnabled = m_checkTnr->isChecked();
+    }
+    if (m_sliderTnrStrength) {
+        f.tnrStrength = m_sliderTnrStrength->value() / 100.0f;
+    }
 
     m_glProcessor->setFilters(f);
 }
@@ -390,6 +405,8 @@ void MainWindow::onResetDefaults() {
     m_sliderSaturation->setValue(100);
     m_sliderTemperature->setValue(0);
     m_sliderSharpness->setValue(0);
+    if (m_checkTnr) m_checkTnr->setChecked(false);
+    if (m_sliderTnrStrength) m_sliderTnrStrength->setValue(50);
     m_checkMirror->setChecked(false);
     if (m_curveEditor) {
         m_curveEditor->resetLinear();

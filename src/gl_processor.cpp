@@ -16,7 +16,12 @@ static const char* fragmentShaderSource = R"(
 varying vec2 vTexCoord;
 uniform sampler2D uTexture;
 uniform sampler2D uLutTexture;
+uniform sampler2D uPrevTex1; // Frame t-1
+uniform sampler2D uPrevTex2; // Frame t-2
 uniform int uUseLut;
+uniform int uTnrEnabled;
+uniform float uTnrStrength;
+uniform int uHistoryCount;
 
 uniform float uBrightness;
 uniform float uContrast;
@@ -55,6 +60,30 @@ void main() {
 
     vec4 color = texture2D(uTexture, uv);
     vec3 rgb = color.rgb;
+
+    // Temporal Noise Reduction (3-frame sliding window with motion-adaptive weighting)
+    if (uTnrEnabled == 1 && uHistoryCount > 0) {
+        vec3 prev1 = texture2D(uPrevTex1, uv).rgb;
+        float diff1 = length(rgb - prev1);
+        // Motion threshold: suppress temporal blending if significant pixel motion is detected
+        float motionWeight1 = exp(-diff1 * 12.0) * uTnrStrength;
+
+        vec3 accum = rgb;
+        float totalWeight = 1.0;
+
+        accum += prev1 * motionWeight1 * 0.8;
+        totalWeight += motionWeight1 * 0.8;
+
+        if (uHistoryCount >= 2) {
+            vec3 prev2 = texture2D(uPrevTex2, uv).rgb;
+            float diff2 = length(rgb - prev2);
+            float motionWeight2 = exp(-diff2 * 12.0) * uTnrStrength;
+            accum += prev2 * motionWeight2 * 0.5;
+            totalWeight += motionWeight2 * 0.5;
+        }
+
+        rgb = accum / totalWeight;
+    }
 
     // 1. Unsharp mask (convolution sharpening)
     if (uSharpness > 0.001) {
@@ -112,6 +141,8 @@ GLProcessor::GLProcessor(QWidget* parent)
 GLProcessor::~GLProcessor() {
     makeCurrent();
     if (m_inputTex) glDeleteTextures(1, &m_inputTex);
+    if (m_historyTex[0]) glDeleteTextures(1, &m_historyTex[0]);
+    if (m_historyTex[1]) glDeleteTextures(1, &m_historyTex[1]);
     if (m_lutTex) glDeleteTextures(1, &m_lutTex);
     if (m_fboTex) glDeleteTextures(1, &m_fboTex);
     if (m_fbo) glDeleteFramebuffers(1, &m_fbo);
@@ -143,6 +174,15 @@ void GLProcessor::initializeGL() {
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 
+    for (int i = 0; i < 2; ++i) {
+        glGenTextures(1, &m_historyTex[i]);
+        glBindTexture(GL_TEXTURE_2D, m_historyTex[i]);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    }
+
     glGenTextures(1, &m_lutTex);
     glBindTexture(GL_TEXTURE_2D, m_lutTex);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
@@ -170,6 +210,11 @@ void GLProcessor::setupShaders() {
     m_uLutTexture = m_program->uniformLocation("uLutTexture");
     m_uUseLut = m_program->uniformLocation("uUseLut");
     m_uCropRect = m_program->uniformLocation("uCropRect");
+    m_uPrevTex1 = m_program->uniformLocation("uPrevTex1");
+    m_uPrevTex2 = m_program->uniformLocation("uPrevTex2");
+    m_uTnrEnabled = m_program->uniformLocation("uTnrEnabled");
+    m_uTnrStrength = m_program->uniformLocation("uTnrStrength");
+    m_uHistoryCount = m_program->uniformLocation("uHistoryCount");
 }
 
 void GLProcessor::setCropRect(const QRectF& cropRect) {
@@ -209,9 +254,21 @@ void GLProcessor::paintGL() {
     glBindTexture(GL_TEXTURE_2D, m_lutTex);
     m_program->setUniformValue(m_uLutTexture, 1);
 
+    glActiveTexture(GL_TEXTURE2);
+    glBindTexture(GL_TEXTURE_2D, m_historyTex[0]);
+    m_program->setUniformValue(m_uPrevTex1, 2);
+
+    glActiveTexture(GL_TEXTURE3);
+    glBindTexture(GL_TEXTURE_2D, m_historyTex[1]);
+    m_program->setUniformValue(m_uPrevTex2, 3);
+
     if (m_showProcessed) {
-        // Output pane: apply all shader filters and crop zoom
+        // Output pane: apply all shader filters, TNR, and crop zoom
         m_program->setUniformValue(m_uUseLut, 1);
+        m_program->setUniformValue(m_uTnrEnabled, m_filters.tnrEnabled ? 1 : 0);
+        m_program->setUniformValue(m_uTnrStrength, m_filters.tnrStrength);
+        m_program->setUniformValue(m_uHistoryCount, m_historyCount);
+
         m_program->setUniformValue(m_uBrightness, m_filters.brightness);
         m_program->setUniformValue(m_uContrast, m_filters.contrast);
         m_program->setUniformValue(m_uGamma, m_filters.gamma);
@@ -225,6 +282,9 @@ void GLProcessor::paintGL() {
     } else {
         // Input pane: pure raw camera image, full frame
         m_program->setUniformValue(m_uUseLut, 0);
+        m_program->setUniformValue(m_uTnrEnabled, 0);
+        m_program->setUniformValue(m_uTnrStrength, 0.0f);
+        m_program->setUniformValue(m_uHistoryCount, 0);
         m_program->setUniformValue(m_uBrightness, 0.0f);
         m_program->setUniformValue(m_uContrast, 1.0f);
         m_program->setUniformValue(m_uGamma, 1.0f);
@@ -287,6 +347,13 @@ void GLProcessor::processFrame(const uint8_t* rgba, int width, int height, std::
         glBindTexture(GL_TEXTURE_2D, m_inputTex);
         glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
 
+        // Reallocate sliding window history textures
+        for (int i = 0; i < 2; ++i) {
+            glBindTexture(GL_TEXTURE_2D, m_historyTex[i]);
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+        }
+        m_historyCount = 0;
+
         // Reallocate FBO for offscreen readback
         if (m_fbo) {
             glDeleteFramebuffers(1, &m_fbo);
@@ -305,10 +372,6 @@ void GLProcessor::processFrame(const uint8_t* rgba, int width, int height, std::
         glBindFramebuffer(GL_FRAMEBUFFER, defaultFramebufferObject());
     }
 
-    // Upload raw camera texture
-    glBindTexture(GL_TEXTURE_2D, m_inputTex);
-    glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, width, height, GL_RGBA, GL_UNSIGNED_BYTE, rgba);
-
     // 1. Render to FBO for output device write
     glBindFramebuffer(GL_FRAMEBUFFER, m_fbo);
     glViewport(0, 0, width, height);
@@ -322,12 +385,26 @@ void GLProcessor::processFrame(const uint8_t* rgba, int width, int height, std::
     m_program->bind();
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, m_inputTex);
+    // Upload raw camera texture to current input
+    glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, width, height, GL_RGBA, GL_UNSIGNED_BYTE, rgba);
     m_program->setUniformValue("uTexture", 0);
 
     glActiveTexture(GL_TEXTURE1);
     glBindTexture(GL_TEXTURE_2D, m_lutTex);
     m_program->setUniformValue(m_uLutTexture, 1);
+
+    glActiveTexture(GL_TEXTURE2);
+    glBindTexture(GL_TEXTURE_2D, m_historyTex[0]);
+    m_program->setUniformValue(m_uPrevTex1, 2);
+
+    glActiveTexture(GL_TEXTURE3);
+    glBindTexture(GL_TEXTURE_2D, m_historyTex[1]);
+    m_program->setUniformValue(m_uPrevTex2, 3);
+
     m_program->setUniformValue(m_uUseLut, 1);
+    m_program->setUniformValue(m_uTnrEnabled, m_filters.tnrEnabled ? 1 : 0);
+    m_program->setUniformValue(m_uTnrStrength, m_filters.tnrStrength);
+    m_program->setUniformValue(m_uHistoryCount, m_historyCount);
 
     m_program->setUniformValue(m_uBrightness, m_filters.brightness);
     m_program->setUniformValue(m_uContrast, m_filters.contrast);
@@ -370,6 +447,14 @@ void GLProcessor::processFrame(const uint8_t* rgba, int width, int height, std::
 
     // Restore to default framebuffer for preview widget
     glBindFramebuffer(GL_FRAMEBUFFER, defaultFramebufferObject());
+
+    // Slide 3-frame temporal window:
+    // historyTex[1] (t-2) becomes old historyTex[0] (t-1), and historyTex[0] becomes m_inputTex (t).
+    std::swap(m_historyTex[1], m_historyTex[0]);
+    std::swap(m_historyTex[0], m_inputTex);
+    if (m_historyCount < 2) {
+        m_historyCount++;
+    }
 
     // Trigger widget redraw
     update();

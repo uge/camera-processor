@@ -70,6 +70,8 @@ private:
     QSlider* m_sliderSaturation = nullptr;
     QSlider* m_sliderTemperature = nullptr;
     QSlider* m_sliderSharpness = nullptr;
+    QCheckBox* m_checkTnr = nullptr;
+    QSlider* m_sliderTnrStrength = nullptr;
     QCheckBox* m_checkMirror = nullptr;
     CurveEditor* m_curveEditor = nullptr;
 
