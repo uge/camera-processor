@@ -65,49 +65,52 @@ static inline uint8_t clamp8(int val) {
     return static_cast<uint8_t>(val < 0 ? 0 : (val > 255 ? 255 : val));
 }
 
-bool V4L2Output::writeFrameRGBA(const uint8_t* rgba, int width, int height) {
+bool V4L2Output::writeFrameRGBA(const uint8_t* __restrict__ rgba, int width, int height) {
     if (m_fd < 0 || width != m_width || height != m_height) return false;
 
-    size_t expectedSize = static_cast<size_t>(width * height * 2);
+    const size_t expectedSize = static_cast<size_t>(width * height * 2);
     if (m_yuyvBuffer.size() != expectedSize) {
         m_yuyvBuffer.resize(expectedSize);
     }
 
-    uint8_t* out = m_yuyvBuffer.data();
-    int totalPixels = width * height;
-    int srcIdx = 0;
-    int dstIdx = 0;
+    uint8_t* __restrict__ out = m_yuyvBuffer.data();
+    const int totalPixels = width * height;
 
-    // Convert RGBA -> YUYV
-    // Rec.601 standard matrix:
-    // Y  =  0.299 R + 0.587 G + 0.114 B
-    // Cb = -0.168736 R - 0.331264 G + 0.5 B + 128
-    // Cr =  0.5 R - 0.418688 G - 0.081312 B + 128
-    for (int i = 0; i < totalPixels; i += 2) {
-        int r0 = rgba[srcIdx + 0];
-        int g0 = rgba[srcIdx + 1];
-        int b0 = rgba[srcIdx + 2];
+    // Fast pointer-based RGBA -> YUYV conversion
+    // Rec.601 integer fixed-point coefficients:
+    // Y0 = (19595*R0 + 38469*G0 + 7472*B0) >> 16
+    // Y1 = (19595*R1 + 38469*G1 + 7472*B1) >> 16
+    // U  = ((-11059*R_avg - 21709*G_avg + 32768*B_avg) >> 16) + 128
+    // V  = (( 32768*R_avg - 27439*G_avg -  5329*B_avg) >> 16) + 128
+    const uint8_t* pSrc = rgba;
+    uint8_t* pDst = out;
+    const uint8_t* pSrcEnd = rgba + totalPixels * 4;
 
-        int r1 = rgba[srcIdx + 4];
-        int g1 = rgba[srcIdx + 5];
-        int b1 = rgba[srcIdx + 6];
-        srcIdx += 8;
+    while (pSrc < pSrcEnd) {
+        const int r0 = pSrc[0];
+        const int g0 = pSrc[1];
+        const int b0 = pSrc[2];
 
-        int y0 = ( 19595 * r0 + 38469 * g0 +  7472 * b0) >> 16;
-        int y1 = ( 19595 * r1 + 38469 * g1 +  7472 * b1) >> 16;
+        const int r1 = pSrc[4];
+        const int g1 = pSrc[5];
+        const int b1 = pSrc[6];
+        pSrc += 8;
 
-        int rAvg = (r0 + r1) >> 1;
-        int gAvg = (g0 + g1) >> 1;
-        int bAvg = (b0 + b1) >> 1;
+        const int y0 = (19595 * r0 + 38469 * g0 +  7472 * b0) >> 16;
+        const int y1 = (19595 * r1 + 38469 * g1 +  7472 * b1) >> 16;
 
-        int u = ((-11059 * rAvg - 21709 * gAvg + 32768 * bAvg) >> 16) + 128;
-        int v = (( 32768 * rAvg - 27439 * gAvg -  5329 * bAvg) >> 16) + 128;
+        const int rAvg = (r0 + r1) >> 1;
+        const int gAvg = (g0 + g1) >> 1;
+        const int bAvg = (b0 + b1) >> 1;
 
-        out[dstIdx + 0] = clamp8(y0);
-        out[dstIdx + 1] = clamp8(u);
-        out[dstIdx + 2] = clamp8(y1);
-        out[dstIdx + 3] = clamp8(v);
-        dstIdx += 4;
+        const int u = ((-11059 * rAvg - 21709 * gAvg + 32768 * bAvg) >> 16) + 128;
+        const int v = (( 32768 * rAvg - 27439 * gAvg -  5329 * bAvg) >> 16) + 128;
+
+        pDst[0] = clamp8(y0);
+        pDst[1] = clamp8(u);
+        pDst[2] = clamp8(y1);
+        pDst[3] = clamp8(v);
+        pDst += 4;
     }
 
     ssize_t written = write(m_fd, out, expectedSize);

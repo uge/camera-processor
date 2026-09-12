@@ -211,22 +211,40 @@ static void yuyvToRgba(const uint8_t* yuyv, uint8_t* rgba, int width, int height
 bool V4L2Capture::grabFrameRGBA(std::vector<uint8_t>& outRgba, int& outWidth, int& outHeight) {
     if (!m_streaming || m_fd < 0) return false;
 
-    v4l2_buffer buf;
-    std::memset(&buf, 0, sizeof(buf));
-    buf.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-    buf.memory = V4L2_MEMORY_MMAP;
+    // To minimize latency, drain any backlog in the V4L2 queue and only keep the newest frame.
+    // Older ready buffers are immediately re-queued to the kernel.
+    v4l2_buffer latestBuf;
+    std::memset(&latestBuf, 0, sizeof(latestBuf));
+    latestBuf.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+    latestBuf.memory = V4L2_MEMORY_MMAP;
 
-    if (xioctl(m_fd, VIDIOC_DQBUF, &buf) < 0) {
+    if (xioctl(m_fd, VIDIOC_DQBUF, &latestBuf) < 0) {
         if (errno == EAGAIN) return false;
         return false;
+    }
+
+    // Now check if there are even newer buffers waiting in the queue
+    while (true) {
+        v4l2_buffer nextBuf;
+        std::memset(&nextBuf, 0, sizeof(nextBuf));
+        nextBuf.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+        nextBuf.memory = V4L2_MEMORY_MMAP;
+
+        if (xioctl(m_fd, VIDIOC_DQBUF, &nextBuf) == 0) {
+            // Re-queue the previous older buffer immediately
+            xioctl(m_fd, VIDIOC_QBUF, &latestBuf);
+            latestBuf = nextBuf;
+        } else {
+            break;
+        }
     }
 
     outWidth = m_width;
     outHeight = m_height;
     outRgba.resize(m_width * m_height * 4);
 
-    const uint8_t* rawData = static_cast<const uint8_t*>(m_buffers[buf.index].start);
-    size_t bytesUsed = buf.bytesused;
+    const uint8_t* rawData = static_cast<const uint8_t*>(m_buffers[latestBuf.index].start);
+    size_t bytesUsed = latestBuf.bytesused;
 
     bool decoded = false;
     if (m_pixelFormat == V4L2_PIX_FMT_MJPEG && m_tjDecompressor) {
@@ -245,8 +263,8 @@ bool V4L2Capture::grabFrameRGBA(std::vector<uint8_t>& outRgba, int& outWidth, in
         decoded = true;
     }
 
-    // Re-queue buffer
-    xioctl(m_fd, VIDIOC_QBUF, &buf);
+    // Re-queue the latest buffer back to kernel
+    xioctl(m_fd, VIDIOC_QBUF, &latestBuf);
     return decoded;
 }
 

@@ -38,6 +38,7 @@ public:
 
     int getWidth() const { return m_width; }
     int getHeight() const { return m_height; }
+    int getFd() const { return m_fd; }
 
 private:
     struct Buffer {

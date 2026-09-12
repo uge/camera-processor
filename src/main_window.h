@@ -7,6 +7,7 @@
 #include <QPushButton>
 #include <QComboBox>
 #include <QTimer>
+#include <QSocketNotifier>
 #include <QVBoxLayout>
 #include <memory>
 #include <vector>
@@ -51,6 +52,7 @@ private:
     CropOverlay* m_cropOverlay = nullptr;
 
     QTimer* m_frameTimer = nullptr;
+    QSocketNotifier* m_cameraNotifier = nullptr;
 
     // Buffer cache
     std::vector<uint8_t> m_rawFrameRgba;

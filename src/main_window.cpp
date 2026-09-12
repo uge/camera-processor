@@ -39,10 +39,18 @@ MainWindow::MainWindow(QWidget* parent)
         m_cropOverlay->setTargetAspectRatio((double)outW / outH);
     }
 
-    // High frequency frame timer (approx 60 Hz polling loop to feed 30 fps capture seamlessly)
+    // Low latency event-driven capture:
+    // When the physical camera DMA buffer is filled by the kernel USB host controller,
+    // QSocketNotifier wakes the event loop immediately with zero polling latency.
+    if (m_capture.getFd() >= 0) {
+        m_cameraNotifier = new QSocketNotifier(m_capture.getFd(), QSocketNotifier::Read, this);
+        connect(m_cameraNotifier, &QSocketNotifier::activated, this, &MainWindow::onFrameTimer);
+    }
+
+    // High frequency fallback timer (in case driver event notification behaves erratically)
     m_frameTimer = new QTimer(this);
     connect(m_frameTimer, &QTimer::timeout, this, &MainWindow::onFrameTimer);
-    m_frameTimer->start(10); // 10ms intervals
+    m_frameTimer->start(16);
 
     m_lastFpsTime = QDateTime::currentMSecsSinceEpoch();
 }
@@ -65,6 +73,7 @@ bool MainWindow::eventFilter(QObject* watched, QEvent* event) {
 }
 
 MainWindow::~MainWindow() {
+    if (m_cameraNotifier) m_cameraNotifier->setEnabled(false);
     if (m_frameTimer) m_frameTimer->stop();
     m_capture.closeDevice();
     m_output.closeDevice();
