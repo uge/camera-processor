@@ -1,0 +1,9 @@
+[Desktop Entry]
+Name=Camera Processor
+Comment=Real-Time Webcam Video Processor and V4L2 Virtual Device
+Exec=camera-processor
+Icon=camera-video
+Terminal=false
+Type=Application
+Categories=AudioVideo;Video;
+Keywords=camera;webcam;v4l2;video;

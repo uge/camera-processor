@@ -42,3 +42,21 @@ target_link_libraries(camera-processor PRIVATE
     GL
     pthread
 )
+
+install(TARGETS camera-processor DESTINATION bin)
+install(FILES README.md LICENSE DESTINATION share/doc/camera-processor)
+install(FILES resources/camera-processor.desktop DESTINATION share/applications)
+
+set(CPACK_PACKAGE_NAME "camera-processor")
+set(CPACK_PACKAGE_VENDOR "uge")
+set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "Real-Time GPU Camera Processor & V4L2 Virtual Device")
+set(CPACK_PACKAGE_VERSION_MAJOR "1")
+set(CPACK_PACKAGE_VERSION_MINOR "0")
+set(CPACK_PACKAGE_VERSION_PATCH "0")
+set(CPACK_GENERATOR "DEB")
+set(CPACK_DEBIAN_PACKAGE_MAINTAINER "uge")
+set(CPACK_DEBIAN_PACKAGE_SECTION "video")
+set(CPACK_DEBIAN_PACKAGE_DEPENDS "libqt6core6, libqt6gui6, libqt6widgets6, libqt6opengl6, libqt6openglwidgets6, libturbojpeg0, libgl1")
+set(CPACK_DEBIAN_PACKAGE_RECOMMENDS "v4l2loopback-dkms, v4l-utils, pkexec")
+
+include(CPack)

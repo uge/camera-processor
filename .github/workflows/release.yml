@@ -34,6 +34,7 @@ jobs:
             qt6-base-dev \
             libgl-dev \
             libturbojpeg-dev \
+            dpkg-dev \
             tar
 
       - name: Configure CMake
@@ -42,18 +43,29 @@ jobs:
       - name: Build executable
         run: cmake --build build --config Release
 
-      - name: Package release artifact
+      - name: Package artifacts (.deb and .tar.gz)
         run: |
-          mkdir -p release_package
-          cp build/camera-processor release_package/
-          cp README.md LICENSE release_package/
           TAG=${{ github.ref_name }}
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             TAG="${{ github.event.inputs.tag_name }}"
           fi
+
+          # 1. Build .deb package via CPack
+          cd build && cpack -G DEB
+          DEB_FILE=$(ls camera-processor-*.deb)
+          VERSIONED_DEB="camera-processor_${TAG#v}_amd64.deb"
+          mv "${DEB_FILE}" "../${VERSIONED_DEB}"
+          cd ..
+
+          # 2. Build standalone tar.gz archive
+          mkdir -p release_package
+          cp build/camera-processor release_package/
+          cp README.md LICENSE release_package/
           ARCHIVE_NAME="camera-processor-ubuntu-26.04-${TAG}.tar.gz"
           tar -czvf "${ARCHIVE_NAME}" -C release_package camera-processor README.md LICENSE
+
           echo "ARCHIVE_NAME=${ARCHIVE_NAME}" >> $GITHUB_ENV
+          echo "DEB_NAME=${VERSIONED_DEB}" >> $GITHUB_ENV
           echo "RELEASE_TAG=${TAG}" >> $GITHUB_ENV
 
       - name: Create GitHub Release
@@ -62,7 +74,9 @@ jobs:
         with:
           tag_name: ${{ env.RELEASE_TAG }}
           name: Release ${{ env.RELEASE_TAG }}
-          files: ${{ env.ARCHIVE_NAME }}
+          files: |
+            ${{ env.ARCHIVE_NAME }}
+            ${{ env.DEB_NAME }}
           draft: false
           prerelease: false
           generate_release_notes: true

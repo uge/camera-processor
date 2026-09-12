@@ -114,9 +114,12 @@ camera-processor/
 
 ## Automated Releases & CI
 
-GitHub Actions automatically builds release binaries inside a clean **Ubuntu 26.04** container on tag creation (`v*`) or manual `workflow_dispatch` trigger:
-- Builds executable with Qt6, OpenGL, and TurboJPEG on Release optimizations.
-- Packages binary, documentation, and license as `camera-processor-ubuntu-26.04-<tag>.tar.gz` and attaches it directly to the GitHub Release.
+GitHub Actions automatically builds release packages inside a clean **Ubuntu 26.04** container on tag creation (`v*`) or manual `workflow_dispatch` trigger:
+- **Debian Package (`.deb`)**: Built with CPack including desktop shortcut, documentation, and dependencies (`libqt6core6`, `libqt6gui6`, `libqt6widgets6`, `libqt6opengl6`, `libqt6openglwidgets6`, `libturbojpeg0`). Install via:
+  ```bash
+  sudo apt install ./camera-processor_<version>_amd64.deb
+  ```
+- **Standalone Archive (`.tar.gz`)**: `camera-processor-ubuntu-26.04-<tag>.tar.gz` containing the standalone binary, README, and license.
 
 ---
 
