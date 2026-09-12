@@ -1,0 +1,10 @@
+build/
+.cache/
+*.o
+*.a
+*.so
+*~
+*.swp
+compile_commands.json
+.vscode/
+.idea/
