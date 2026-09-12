@@ -112,6 +112,14 @@ camera-processor/
 
 ---
 
+## Automated Releases & CI
+
+GitHub Actions automatically builds release binaries inside a clean **Ubuntu 26.04** container on tag creation (`v*`) or manual `workflow_dispatch` trigger:
+- Builds executable with Qt6, OpenGL, and TurboJPEG on Release optimizations.
+- Packages binary, documentation, and license as `camera-processor-ubuntu-26.04-<tag>.tar.gz` and attaches it directly to the GitHub Release.
+
+---
+
 ## License
 
 MIT License. See LICENSE for details.
